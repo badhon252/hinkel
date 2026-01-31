@@ -17,6 +17,7 @@ import privacyAdminRoutes from "../../entities/privacy/privacy.admin.route.js";
 
 import staticPageRoutes from "../../entities/staticPage/staticPage.route.js";
 import staticPageAdminRoutes from "../../entities/staticPage/staticPage.admin.route.js";
+import { styleRoutes } from '../../entities/admin/content/style.router.js';
 
 
 
@@ -43,5 +44,7 @@ router.use("/v1/admin/privacy", privacyAdminRoutes);
 
 router.use("/v1/pages", staticPageRoutes);
 router.use("/v1/admin/pages", staticPageAdminRoutes);
+
+router.use('/v1/style', styleRoutes)
 
 export default router;
