@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 
 const ItemSchema = new mongoose.Schema(
   {
@@ -6,10 +6,11 @@ const ItemSchema = new mongoose.Schema(
     subtitle: { type: String },
     type: { type: String, required: true },
     image: { type: String },
+    gallery: { type: [String], default: [] },
     prompt: { type: String }
   },
   { timestamps: true }
 );
 
- const Item = mongoose.model("Item", ItemSchema);
-export default Item
+const Item = mongoose.model('Item', ItemSchema);
+export default Item;

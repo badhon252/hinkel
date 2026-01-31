@@ -13,7 +13,7 @@ import { generateResponse } from '../../../lib/responseFormate.js';
 
 export const createItem = async (req, res) => {
   try {
-    const { title, subtitle, type,prompt } = req.body;
+    const { title, subtitle, type, prompt } = req.body;
 
     // Check if image exists
     const file = req.files?.image?.[0];
@@ -21,9 +21,22 @@ export const createItem = async (req, res) => {
       return generateResponse(res, 400, false, 'Item image is required');
     }
 
-    // Upload to Cloudinary
+    // Upload main image to Cloudinary
     const sanitizedTitle = `${title.replace(/\s+/g, '-')}-${Date.now()}`;
     const result = await cloudinaryUpload(file.path, sanitizedTitle, 'items');
+
+    // Upload gallery images (optional)
+    const galleryFiles = req.files?.gallery || [];
+    const gallery = [];
+    for (const galleryFile of galleryFiles) {
+      const galleryTitle = `${title.replace(/\s+/g, '-')}-gallery-${Date.now()}`;
+      const galleryResult = await cloudinaryUpload(
+        galleryFile.path,
+        galleryTitle,
+        'items'
+      );
+      gallery.push(galleryResult.url);
+    }
 
     // Create DB entry
     const newItem = await Item.create({
@@ -31,7 +44,8 @@ export const createItem = async (req, res) => {
       subtitle,
       type,
       prompt,
-      image: result.url
+      image: result.url,
+      gallery
     });
 
     return generateResponse(
@@ -61,7 +75,7 @@ export const getAllItems = async (req, res) => {
 
     // Build filter object
     const filter = {};
-    if (type) filter.type = type;
+    if (type) filter.type = type.toLowerCase();
 
     // Fetch items matching the filter
     const items = await Item.find(filter);
@@ -112,6 +126,20 @@ export const updateItem = async (req, res) => {
         'items'
       );
       updateData.image = cloudinaryResult.url;
+    }
+
+    if (req.files?.gallery && req.files.gallery.length > 0) {
+      const gallery = [];
+      for (const galleryFile of req.files.gallery) {
+        const galleryTitle = `${title?.replace(/\s+/g, '-') || 'item'}-gallery-${Date.now()}`;
+        const galleryResult = await cloudinaryUpload(
+          galleryFile.path,
+          galleryTitle,
+          'items'
+        );
+        gallery.push(galleryResult.url);
+      }
+      updateData.gallery = gallery;
     }
 
     const updatedItem = await Item.findByIdAndUpdate(
