@@ -1,6 +1,6 @@
 import { cloudinaryUpload } from '../../../lib/cloudinaryUpload.js';
 // Your helper for consistent responses
-import fs from 'fs';
+// import fs from 'fs';
 import Item from './content.model.js';
 import Header from './header.model.js';
 import { generateResponse } from '../../../lib/responseFormate.js';
