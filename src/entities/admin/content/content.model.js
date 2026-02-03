@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 const ItemSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
+    color:{type:String},
     subtitle: { type: String },
     type: { type: String, required: true },
     image: { type: String },

@@ -13,7 +13,7 @@ import { generateResponse } from '../../../lib/responseFormate.js';
 
 export const createItem = async (req, res) => {
   try {
-    const { title, subtitle, type, prompt } = req.body;
+    const { title, subtitle, type, prompt, color } = req.body;
 
     // Check if image exists
     const file = req.files?.image?.[0];
@@ -44,6 +44,7 @@ export const createItem = async (req, res) => {
       subtitle,
       type,
       prompt,
+      color,
       image: result.url,
       gallery
     });
@@ -112,9 +113,9 @@ export const getItemById = async (req, res) => {
  */
 export const updateItem = async (req, res) => {
   try {
-    const { title, subtitle, type } = req.body;
+    const { title, subtitle, type, color } = req.body;
 
-    const updateData = { title, subtitle, type };
+    const updateData = { title, subtitle, type, color };
 
     if (req.files?.image && req.files.image[0]) {
       const file = req.files.image[0];
