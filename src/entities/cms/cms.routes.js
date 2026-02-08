@@ -25,7 +25,7 @@ router.get('/type/:type', getCmsContentByType);
 // Create new CMS content
 router.post(
   '/',
-  multerUpload([{ name: 'image', maxCount: 1 }]),
+  multerUpload([{ name: 'image', maxCount: 10 }]),
   createCmsContent
 );
 

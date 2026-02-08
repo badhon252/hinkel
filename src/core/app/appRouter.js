@@ -29,8 +29,8 @@ router.use('/v1/pricing', pricingTierRoutes);
 router.use('/v1/ai', generateImage);
 
 router.use('/v1/order', orderRoutes);
-router.use('/v1/content', contentRoutes);
 router.use('/v1/content/cms', cmsRoutes);
+router.use('/v1/content', contentRoutes);
 
 router.use('/v1/order', orderRoutes);
 router.use('/v1/guest', guestRouter);
@@ -46,6 +46,6 @@ router.use('/v1/admin/pages', staticPageAdminRoutes);
 
 router.use('/v1/style', styleRoutes);
 
-router.use('/v1/step', stepRoutes)
+router.use('/v1/step', stepRoutes);
 
 export default router;
