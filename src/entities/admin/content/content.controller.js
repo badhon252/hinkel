@@ -113,9 +113,10 @@ export const getItemById = async (req, res) => {
  */
 export const updateItem = async (req, res) => {
   try {
-    const { title, subtitle, type, color } = req.body;
+    const { title, subtitle, type, color, prompt } = req.body;
 
     const updateData = { title, subtitle, type, color };
+    if (prompt !== undefined) updateData.prompt = prompt;
 
     if (req.files?.image && req.files.image[0]) {
       const file = req.files.image[0];
