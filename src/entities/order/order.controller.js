@@ -2,7 +2,6 @@ import Stripe from 'stripe';
 import Pricing from '../admin/pricing.model.js';
 import Order from './order.model.js';
 import User from '../auth/auth.model.js';
-import { generateResponse } from '../../lib/responseFormate.js';
 import { cloudinaryUpload } from '../../lib/cloudinaryUpload.js';
 import { orderService } from './order.service.js';
 
@@ -264,15 +263,66 @@ export const getOrderStats = async (req, res) => {
 
 export const getAllOrdersPopulated = async (req, res) => {
   try {
-    // .populate('userId') assumes the 'userId' field in your Order model
-    // has a 'ref' pointing to the 'User' model.
-    const orders = await Order.find()
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      deliveryStatus,
+      deliveryType,
+      search,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    const query = {};
+
+    // Filter by payment status
+    if (status && status !== 'all') query.status = status;
+
+    // Filter by delivery status
+    if (deliveryStatus && deliveryStatus !== 'all')
+      query.deliveryStatus = deliveryStatus;
+
+    // Filter by delivery type
+    if (deliveryType && deliveryType !== 'all')
+      query.deliveryType = deliveryType;
+
+    // Search logic
+    if (search) {
+      // Find matching users first to filter orders by userId
+      const users = await User.find({
+        $or: [
+          { name: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } }
+        ]
+      }).select('_id');
+
+      const userIds = users.map((u) => u._id);
+
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { stripeSessionId: { $regex: search, $options: 'i' } },
+        { userId: { $in: userIds } }
+      ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const limitNum = parseInt(limit);
+
+    const orders = await Order.find(query)
       .populate('userId')
-      .sort({ createdAt: -1 }); // Show newest orders first
+      .sort({ [sortBy]: sortOrder === 'asc' ? 1 : -1 })
+      .skip(skip)
+      .limit(limitNum);
+
+    const totalOrders = await Order.countDocuments(query);
 
     res.status(200).json({
       success: true,
       count: orders.length,
+      totalCount: totalOrders,
+      currentPage: parseInt(page),
+      totalPages: Math.ceil(totalOrders / limitNum),
       data: orders
     });
   } catch (error) {
@@ -585,5 +635,93 @@ export const uploadBook = async (req, res) => {
       success: false,
       message: error.message || 'Failed to upload book'
     });
+  }
+};
+
+// Export Orders as CSV
+export const exportOrders = async (req, res) => {
+  try {
+    const { status, deliveryStatus, deliveryType, search } = req.query;
+
+    const query = {};
+
+    // Filter by payment status
+    if (status && status !== 'all') query.status = status;
+
+    // Filter by delivery status
+    if (deliveryStatus && deliveryStatus !== 'all')
+      query.deliveryStatus = deliveryStatus;
+
+    // Filter by delivery type
+    if (deliveryType && deliveryType !== 'all')
+      query.deliveryType = deliveryType;
+
+    // Search logic
+    if (search) {
+      const users = await User.find({
+        $or: [
+          { name: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } }
+        ]
+      }).select('_id');
+
+      const userIds = users.map((u) => u._id);
+
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { stripeSessionId: { $regex: search, $options: 'i' } },
+        { userId: { $in: userIds } }
+      ];
+    }
+
+    const orders = await Order.find(query)
+      .populate('userId')
+      .sort({ createdAt: -1 });
+
+    // CSV Header
+    const csvRows = [
+      [
+        'Order ID',
+        'Date',
+        'Customer Name',
+        'Customer Email',
+        'Title',
+        'Delivery Type',
+        'Page Count',
+        'Total Amount ($)',
+        'Payment Status',
+        'Delivery Status'
+      ].join(',')
+    ];
+
+    // CSV Data
+    orders.forEach((order) => {
+      const row = [
+        `"${order._id}"`,
+        `"${new Date(order.createdAt).toLocaleDateString()}"`,
+        `"${order.userId?.name || 'Guest'}"`,
+        `"${order.userId?.email || 'N/A'}"`,
+        `"${(order.title || 'N/A').replace(/"/g, '""')}"`,
+        `"${order.deliveryType}"`,
+        order.pageCount,
+        (order.totalAmount / 100).toFixed(2),
+        `"${order.status}"`,
+        `"${order.deliveryStatus || 'pending'}"`
+      ];
+      csvRows.push(row.join(','));
+    });
+
+    const csvContent = csvRows.join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=orders-export-${Date.now()}.csv`
+    );
+
+    return res.status(200).send(csvContent);
+  } catch (error) {
+    console.error('Export Error:', error);
+    res.status(500).json({ success: false, error: 'Failed to export orders' });
   }
 };
