@@ -169,71 +169,66 @@ export const getItemById = async (req, res) => {
 //   }
 // };
 
+
+
+
 export const updateItem = async (req, res) => {
   try {
-    let { title, subtitle, type, color, prompt } = req.body;
+    let { title, subtitle, type, color, prompt, galleryAction, removeGalleryUrls } = req.body;
     if (type) type = type.trim().toLowerCase();
+
+    // ✅ Fetch existing item first
+    const existingItem = await Item.findById(req.params.id);
+    if (!existingItem) return generateResponse(res, 404, false, "Item not found");
 
     const updateData = {};
 
-    // ✅ Only add fields that are actually provided
+    // ✅ Only add text fields that are actually provided
     if (title    !== undefined) updateData.title    = title;
     if (subtitle !== undefined) updateData.subtitle = subtitle;
     if (type     !== undefined) updateData.type     = type;
     if (color    !== undefined) updateData.color    = color;
     if (prompt   !== undefined) updateData.prompt   = prompt;
 
-    // ✅ Fetch existing item first so we can preserve old images if needed
-    const existingItem = await Item.findById(req.params.id);
-    if (!existingItem) return generateResponse(res, 404, false, "Item not found");
-
-    // ✅ Handle single image upload
-    if (req.files?.image && req.files.image[0]) {
-      const file          = req.files.image[0];
+    // ✅ Handle single image — comes from req.files, NOT req.body
+    if (req.files?.image?.[0]) {
+      const file           = req.files.image[0];
       const sanitizedTitle = `${(title || existingItem.title).replace(/\s+/g, "-")}-${Date.now()}`;
-
       const cloudinaryResult = await cloudinaryUpload(file.path, sanitizedTitle, "items");
-      updateData.image = cloudinaryResult.url;
+      updateData.image     = cloudinaryResult.url;
     }
 
-    // ✅ Handle gallery — support three modes via req.body.galleryAction
-    // galleryAction: "replace" | "append" | "remove"  (default: "append")
-    if (req.files?.gallery && req.files.gallery.length > 0) {
+    // ✅ Handle gallery — comes from req.files, NOT req.body
+    if (req.files?.gallery?.length > 0) {
       const uploadedUrls = [];
 
-      // ✅ Upload in parallel instead of sequential for loop
       await Promise.all(
-        req.files.gallery.map(async (galleryFile) => {
-          const galleryTitle = `${(title || existingItem.title).replace(/\s+/g, "-")}-gallery-${Date.now()}`;
+        req.files.gallery.map(async (galleryFile, index) => {
+          // ✅ index suffix prevents duplicate filenames in parallel uploads
+          const galleryTitle = `${(title || existingItem.title).replace(/\s+/g, "-")}-gallery-${Date.now()}-${index}`;
           const galleryResult = await cloudinaryUpload(galleryFile.path, galleryTitle, "items");
           uploadedUrls.push(galleryResult.url);
         })
       );
 
-      const galleryAction = req.body.galleryAction || "append";
-
       if (galleryAction === "replace") {
-        // Wipe old gallery and set new one
         updateData.gallery = uploadedUrls;
       } else {
-        // ✅ Append new images to existing gallery
-        updateData.gallery = [...existingItem.gallery, ...uploadedUrls];
+        // default: append
+        updateData.gallery = [...(existingItem.gallery || []), ...uploadedUrls];
       }
     }
 
-    // ✅ Handle gallery item removal by index or URL
-    // Send: { removeGalleryUrls: ["url1", "url2"] }
-    if (req.body.removeGalleryUrls) {
-      const toRemove        = Array.isArray(req.body.removeGalleryUrls)
-        ? req.body.removeGalleryUrls
-        : [req.body.removeGalleryUrls];
-      const currentGallery  = updateData.gallery || existingItem.gallery;
-      updateData.gallery    = currentGallery.filter((url) => !toRemove.includes(url));
+    // ✅ Handle gallery URL removal
+    if (removeGalleryUrls) {
+      const toRemove       = Array.isArray(removeGalleryUrls) ? removeGalleryUrls : [removeGalleryUrls];
+      const currentGallery = updateData.gallery ?? existingItem.gallery ?? [];
+      updateData.gallery   = currentGallery.filter((url) => !toRemove.includes(url));
     }
 
     const updatedItem = await Item.findByIdAndUpdate(
       req.params.id,
-      { $set: updateData },   // ✅ $set prevents wiping untouched fields
+      { $set: updateData },
       { new: true, runValidators: true }
     );
 
@@ -245,21 +240,55 @@ export const updateItem = async (req, res) => {
 };
 
 
+
 /**
  * Delete item
  */
+// export const deleteItem = async (req, res) => {
+//   try {
+//     const deletedItem = await Item.findByIdAndDelete(req.params.id);
+//     if (!deletedItem)
+//       return generateResponse(res, 404, false, 'Item not found');
+
+//     return generateResponse(res, 200, true, 'Item deleted successfully');
+//   } catch (error) {
+//     console.error(error);
+//     return generateResponse(res, 500, false, 'Failed to delete item');
+//   }
+// };
+
+
+
+
+
+
 export const deleteItem = async (req, res) => {
   try {
     const deletedItem = await Item.findByIdAndDelete(req.params.id);
     if (!deletedItem)
-      return generateResponse(res, 404, false, 'Item not found');
+      return generateResponse(res, 404, false, "Item not found");
 
-    return generateResponse(res, 200, true, 'Item deleted successfully');
+    // ✅ Collect all Cloudinary image URLs to delete
+    const imagesToDelete = [];
+    if (deletedItem.image)                     imagesToDelete.push(deletedItem.image);
+    if (deletedItem.gallery?.length > 0)       imagesToDelete.push(...deletedItem.gallery);
+
+    // ✅ Delete all images from Cloudinary in parallel
+    if (imagesToDelete.length > 0) {
+      await Promise.all(
+        imagesToDelete.map((url) => cloudinaryDelete(url))
+      );
+    }
+
+    return generateResponse(res, 200, true, "Item deleted successfully");
   } catch (error) {
-    console.error(error);
-    return generateResponse(res, 500, false, 'Failed to delete item');
+    console.error("[deleteItem]", error);
+    return generateResponse(res, 500, false, "Failed to delete item");
   }
 };
+
+
+
 
 // ==================== HEADER CONTROLLERS ====================
 
