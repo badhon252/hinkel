@@ -14,6 +14,8 @@ const createCouponIntoDb = async (payload) => {
     return coupon;
 };
 
+
+const ALLOWED_SORT_FIELDS = ["createdAt", "expiryDate", "discountAmount", "usesLimit"];
 const getAllCouponsFromDb = async (query) => {
     const {
         page = 1,
@@ -23,6 +25,11 @@ const getAllCouponsFromDb = async (query) => {
         sortBy = "createdAt",
         sortOrder = "desc",
     } = query;
+
+    const safePage    = Math.max(1, Number(page));
+    const safeLimit   = Math.min(Math.max(1, Number(limit)), 100);
+    const safeSortBy  = ALLOWED_SORT_FIELDS.includes(sortBy) ? sortBy : "createdAt";
+    const safeSortOrder = sortOrder === "asc" ? 1 : -1;
 
     const filter = {};
 
@@ -36,25 +43,31 @@ const getAllCouponsFromDb = async (query) => {
         filter.expiryDate = { $gte: new Date() };
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
-    const sort = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
-    const totalDocs = await Coupon.countDocuments(filter);
-    const totalPages = Math.ceil(totalDocs / Number(limit));
+    const skip = (safePage - 1) * safeLimit;
+    const sort = { [safeSortBy]: safeSortOrder };
 
-    const coupons = await Coupon.find(filter)
-        .sort(sort)
-        .skip(skip)
-        .limit(Number(limit));
+    const [countResult, couponsResult] = await Promise.allSettled([
+        Coupon.countDocuments(filter),
+        Coupon.find(filter).sort(sort).skip(skip).limit(safeLimit).lean(),
+    ]);
+
+    if (countResult.status === "rejected" || couponsResult.status === "rejected") {
+        throw new AppError("Failed to fetch coupons",500);
+    }
+
+    const totalDocs  = countResult.value;
+    const coupons    = couponsResult.value;
+    const totalPages = Math.ceil(totalDocs / safeLimit);
 
     return {
         data: coupons,
         meta: {
             totalDocs,
             totalPages,
-            currentPage: Number(page),
-            limit: Number(limit),
-            hasNextPage: Number(page) < totalPages,
-            hasPrevPage: Number(page) > 1,
+            currentPage: safePage,
+            limit: safeLimit,
+            hasNextPage: safePage < totalPages,
+            hasPrevPage: safePage > 1,
         },
     };
 };

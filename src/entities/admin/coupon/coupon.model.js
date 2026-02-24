@@ -11,4 +11,10 @@ const couponSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
+// ✅ Indexes — speeds up the exact fields we filter and sort on
+couponSchema.index({ codeName: 1 },                  { unique: true });
+couponSchema.index({ discountType: 1 });
+couponSchema.index({ expiryDate: 1 });
+couponSchema.index({ discountType: 1, expiryDate: 1 }); // compound for combined filters
+
 export const Coupon = mongoose.model("Coupon", couponSchema);
