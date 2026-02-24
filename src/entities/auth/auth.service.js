@@ -5,26 +5,85 @@ import sendEmail from '../../lib/sendEmail.js';
 import verificationCodeTemplate from '../../lib/emailTemplates.js';
 
 
-export const registerUserService = async ({
-  name,
-  email,
-  password
-}) => {
+// export const registerUserService = async ({
+//   name,
+//   email,
+//   password
+// }) => {
+//   const existingUser = await User.findOne({ email });
+//   if (existingUser) throw new Error('User already registered.');
+
+//   const newUser = new User({
+//     name,
+//     email,
+//     password,
+//   });
+
+//   const user = await newUser.save();
+
+//   const { _id, role, profileImage } = user;
+//   return { _id, name, email, role,  profileImage };
+// };
+
+
+// ✅ Modified registerUserService — send OTP after register
+export const registerUserService = async ({ name, email, password }) => {
   const existingUser = await User.findOne({ email });
   if (existingUser) throw new Error('User already registered.');
+
+  const otp        = Math.floor(100000 + Math.random() * 900000);
+  const otpExpires = new Date(Date.now() + emailExpires);
 
   const newUser = new User({
     name,
     email,
     password,
+    otp,
+    otpExpires,
+    otpVerified: false,
+    isVerified: false,
   });
 
   const user = await newUser.save();
 
-  const { _id, role, profileImage } = user;
-  return { _id, name, email, role,  profileImage };
+  // ✅ Send OTP to email
+  await sendEmail({
+    to: email,
+    subject: 'Verify your email',
+    html: verificationCodeTemplate(otp),
+  });
+
+  const payload     = { _id: user._id, role: user.role };
+  const accessToken = user.generateAccessToken(payload);
+
+  return { accessToken };
 };
 
+
+// ✅ New — verifyEmailService (reuses existing otp fields on the model)
+export const verifyEmailService = async ({ email, otp }) => {
+  if (!email || !otp) throw new Error('Email and otp are required');
+
+  const user = await User.findOne({ email });
+  if (!user)                          throw new Error('Invalid email');
+  if (!user.otp || !user.otpExpires)  throw new Error('Otp not found');
+
+  if (
+    parseInt(user.otp, 10) !== parseInt(otp, 10) ||
+    Date.now() > user.otpExpires.getTime()
+  ) {
+    throw new Error('Invalid or expired otp');
+  }
+
+  user.otp        = null;
+  user.otpExpires = null;
+  user.otpVerified = true;
+  user.isVerified  = true;   // ✅ Mark email as verified
+
+  await user.save({ validateBeforeSave: false });
+
+  return;
+};
 
 export const loginUserService = async ({ email, password }) => {
   if (!email || !password) throw new Error('Email and password are required');
