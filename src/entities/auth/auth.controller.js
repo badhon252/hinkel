@@ -7,29 +7,71 @@ import {
   verifyCodeService,
   resetPasswordService,
   changePasswordService,
-  registerUserService
+  registerUserService,
+  verifyEmailService
 } from './auth.service.js';
 
 
+// export const registerUser = async (req, res, next) => {
+//   const { name, email, password } = req.body;
+//   try {
+
+//     const data = await registerUserService({ name, email, password });
+//     generateResponse(res, 201, true, 'Registered user successfully!', data);
+//   }
+
+//   catch (error) {
+
+//     if (error.message === 'User already registered.') {
+//       generateResponse(res, 400, false, 'User already registered', null);
+//     }
+
+//     else {
+//       next(error)
+//     }
+//   }
+// };
+
+
+
+// ✅ Modified registerUser
 export const registerUser = async (req, res, next) => {
   const { name, email, password } = req.body;
   try {
-
     const data = await registerUserService({ name, email, password });
-    generateResponse(res, 201, true, 'Registered user successfully!', data);
-  }
-
-  catch (error) {
-
+    generateResponse(res, 201, true, 'Registered successfully. Please verify your email.', data);
+  } catch (error) {
     if (error.message === 'User already registered.') {
       generateResponse(res, 400, false, 'User already registered', null);
-    }
-
-    else {
-      next(error)
+    } else {
+      next(error);
     }
   }
 };
+
+
+// ✅ New — verifyEmail controller
+export const verifyEmail = async (req, res, next) => {
+  const { email, otp } = req.body;
+  try {
+    await verifyEmailService({ email, otp });
+    generateResponse(res, 200, true, 'Email verified successfully', null);
+  } catch (error) {
+    if (error.message === 'Email and otp are required') {
+      generateResponse(res, 400, false, 'Email and otp are required', null);
+    } else if (error.message === 'Invalid email') {
+      generateResponse(res, 404, false, 'Invalid email', null);
+    } else if (error.message === 'Otp not found') {
+      generateResponse(res, 404, false, 'Otp not found', null);
+    } else if (error.message === 'Invalid or expired otp') {
+      generateResponse(res, 403, false, 'Invalid or expired otp', null);
+    } else {
+      next(error);
+    }
+  }
+};
+
+
 
 
 export const loginUser = async (req, res, next) => {
