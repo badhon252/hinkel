@@ -113,61 +113,137 @@ export const getItemById = async (req, res) => {
 /**
  * Update item
  */
+// export const updateItem = async (req, res) => {
+//   try {
+//     let { title, subtitle, type, color, prompt } = req.body;
+//     // Always store type in lowercase and trimmed for consistency
+//     if (type) type = type.trim().toLowerCase();
+
+//     const updateData = { title, subtitle, type, color };
+//     if (prompt !== undefined) updateData.prompt = prompt;
+
+//     if (req.files?.image && req.files.image[0]) {
+//       const file = req.files.image[0];
+//       const sanitizedTitle = `${title?.replace(/\s+/g, '-') || 'item'}-${Date.now()}`;
+
+//       const cloudinaryResult = await cloudinaryUpload(
+//         file.path,
+//         sanitizedTitle,
+//         'items'
+//       );
+//       updateData.image = cloudinaryResult.url;
+//     }
+
+//     if (req.files?.gallery && req.files.gallery.length > 0) {
+//       const gallery = [];
+//       for (const galleryFile of req.files.gallery) {
+//         const galleryTitle = `${title?.replace(/\s+/g, '-') || 'item'}-gallery-${Date.now()}`;
+//         const galleryResult = await cloudinaryUpload(
+//           galleryFile.path,
+//           galleryTitle,
+//           'items'
+//         );
+//         gallery.push(galleryResult.url);
+//       }
+//       updateData.gallery = gallery;
+//     }
+
+//     const updatedItem = await Item.findByIdAndUpdate(
+//       req.params.id,
+//       updateData,
+//       { new: true }
+//     );
+//     if (!updatedItem)
+//       return generateResponse(res, 404, false, 'Item not found');
+
+//     return generateResponse(
+//       res,
+//       200,
+//       true,
+//       'Item updated successfully',
+//       updatedItem
+//     );
+//   } catch (error) {
+//     console.error(error);
+//     return generateResponse(res, 500, false, 'Failed to update item');
+//   }
+// };
+
 export const updateItem = async (req, res) => {
   try {
     let { title, subtitle, type, color, prompt } = req.body;
-    // Always store type in lowercase and trimmed for consistency
     if (type) type = type.trim().toLowerCase();
 
-    const updateData = { title, subtitle, type, color };
-    if (prompt !== undefined) updateData.prompt = prompt;
+    const updateData = {};
 
+    // ✅ Only add fields that are actually provided
+    if (title    !== undefined) updateData.title    = title;
+    if (subtitle !== undefined) updateData.subtitle = subtitle;
+    if (type     !== undefined) updateData.type     = type;
+    if (color    !== undefined) updateData.color    = color;
+    if (prompt   !== undefined) updateData.prompt   = prompt;
+
+    // ✅ Fetch existing item first so we can preserve old images if needed
+    const existingItem = await Item.findById(req.params.id);
+    if (!existingItem) return generateResponse(res, 404, false, "Item not found");
+
+    // ✅ Handle single image upload
     if (req.files?.image && req.files.image[0]) {
-      const file = req.files.image[0];
-      const sanitizedTitle = `${title?.replace(/\s+/g, '-') || 'item'}-${Date.now()}`;
+      const file          = req.files.image[0];
+      const sanitizedTitle = `${(title || existingItem.title).replace(/\s+/g, "-")}-${Date.now()}`;
 
-      const cloudinaryResult = await cloudinaryUpload(
-        file.path,
-        sanitizedTitle,
-        'items'
-      );
+      const cloudinaryResult = await cloudinaryUpload(file.path, sanitizedTitle, "items");
       updateData.image = cloudinaryResult.url;
     }
 
+    // ✅ Handle gallery — support three modes via req.body.galleryAction
+    // galleryAction: "replace" | "append" | "remove"  (default: "append")
     if (req.files?.gallery && req.files.gallery.length > 0) {
-      const gallery = [];
-      for (const galleryFile of req.files.gallery) {
-        const galleryTitle = `${title?.replace(/\s+/g, '-') || 'item'}-gallery-${Date.now()}`;
-        const galleryResult = await cloudinaryUpload(
-          galleryFile.path,
-          galleryTitle,
-          'items'
-        );
-        gallery.push(galleryResult.url);
+      const uploadedUrls = [];
+
+      // ✅ Upload in parallel instead of sequential for loop
+      await Promise.all(
+        req.files.gallery.map(async (galleryFile) => {
+          const galleryTitle = `${(title || existingItem.title).replace(/\s+/g, "-")}-gallery-${Date.now()}`;
+          const galleryResult = await cloudinaryUpload(galleryFile.path, galleryTitle, "items");
+          uploadedUrls.push(galleryResult.url);
+        })
+      );
+
+      const galleryAction = req.body.galleryAction || "append";
+
+      if (galleryAction === "replace") {
+        // Wipe old gallery and set new one
+        updateData.gallery = uploadedUrls;
+      } else {
+        // ✅ Append new images to existing gallery
+        updateData.gallery = [...existingItem.gallery, ...uploadedUrls];
       }
-      updateData.gallery = gallery;
+    }
+
+    // ✅ Handle gallery item removal by index or URL
+    // Send: { removeGalleryUrls: ["url1", "url2"] }
+    if (req.body.removeGalleryUrls) {
+      const toRemove        = Array.isArray(req.body.removeGalleryUrls)
+        ? req.body.removeGalleryUrls
+        : [req.body.removeGalleryUrls];
+      const currentGallery  = updateData.gallery || existingItem.gallery;
+      updateData.gallery    = currentGallery.filter((url) => !toRemove.includes(url));
     }
 
     const updatedItem = await Item.findByIdAndUpdate(
       req.params.id,
-      updateData,
-      { new: true }
+      { $set: updateData },   // ✅ $set prevents wiping untouched fields
+      { new: true, runValidators: true }
     );
-    if (!updatedItem)
-      return generateResponse(res, 404, false, 'Item not found');
 
-    return generateResponse(
-      res,
-      200,
-      true,
-      'Item updated successfully',
-      updatedItem
-    );
+    return generateResponse(res, 200, true, "Item updated successfully", updatedItem);
   } catch (error) {
-    console.error(error);
-    return generateResponse(res, 500, false, 'Failed to update item');
+    console.error("[updateItem]", error);
+    return generateResponse(res, 500, false, "Failed to update item");
   }
 };
+
 
 /**
  * Delete item
