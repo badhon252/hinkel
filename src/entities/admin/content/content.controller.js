@@ -4,7 +4,7 @@ import { cloudinaryUpload } from '../../../lib/cloudinaryUpload.js';
 import Item from './content.model.js';
 import Header from './header.model.js';
 import { generateResponse } from '../../../lib/responseFormate.js';
-import { cloudinaryDelete } from './cloudinary.js';
+// import { cloudinaryDelete } from './cloudinary.js';
 
 /**
  * Create Item
