@@ -1,9 +1,8 @@
-
-import { AppError } from "../../utility/AppError.js";
-import { Guest } from "./guest.model.js";
+import { AppError } from '../../utility/AppError.js';
+import { Guest } from './guest.model.js';
 // import  sendEmail from "../../lib/sendEmail.js";
 
-import { notifyAdminGuestSubscribed } from "./guestNotification.service.js";
+import { notifyAdminGuestSubscribed } from './guestNotification.service.js';
 
 const createGuestSubscriberIntoDb = async (email) => {
   if (!email) {
@@ -13,7 +12,7 @@ const createGuestSubscriberIntoDb = async (email) => {
   const isExistEmail = await Guest.findOne({ email });
   if (isExistEmail) {
     throw new AppError('Email already exists', 409, [
-      { field: 'email', message: 'This email is already subscribed' },
+      { field: 'email', message: 'This email is already subscribed' }
     ]);
   }
 
@@ -28,49 +27,56 @@ const createGuestSubscriberIntoDb = async (email) => {
 };
 
 const getAllGuestsFromDb = async (query) => {
-  const page = Math.max(parseInt(query.page || "1", 10), 1);
-  const limit = Math.min(Math.max(parseInt(query.limit || "20", 10), 1), 100);
+  const page = Math.max(parseInt(query.page || '1', 10), 1);
+  const limit = Math.min(Math.max(parseInt(query.limit || '20', 10), 1), 100);
   const skip = (page - 1) * limit;
 
-  const q = (query.q || "").toString().trim().toLowerCase();
-  const status = query.status ? query.status.toString().trim().toUpperCase() : null;
+  const q = (query.q || '').toString().trim().toLowerCase();
+  const status = query.status
+    ? query.status.toString().trim().toUpperCase()
+    : null;
   const tag = query.tag ? query.tag.toString().trim().toLowerCase() : null;
+  const sortBy = query.sortBy || 'createdAt';
+  const sortOrder = query.sortOrder === 'asc' ? 1 : -1;
 
   const filter = {};
-  if (q) filter.email = { $regex: q, $options: "i" };
+  if (q) filter.email = { $regex: q, $options: 'i' };
   if (status) filter.status = status;
   if (tag) filter.tags = tag;
 
   const [items, total] = await Promise.all([
     Guest.find(filter)
-      .sort({ createdAt: -1 })
+      .sort({ [sortBy]: sortOrder })
       .skip(skip)
       .limit(limit)
       .lean(),
-    Guest.countDocuments(filter),
+    Guest.countDocuments(filter)
   ]);
 
+  const processedItems = items.map((item) => ({
+    ...item,
+    createdAt: item.createdAt || item._id.getTimestamp()
+  }));
+
   return {
-    items,
+    items: processedItems,
     meta: {
       page,
       limit,
       total,
-      pages: Math.ceil(total / limit),
-    },
+      pages: Math.ceil(total / limit)
+    }
   };
 };
 
-
 const deleteGuestFromDb = async (id) => {
   const deleted = await Guest.findByIdAndDelete(id).lean();
-  if (!deleted) throw new AppError("Subscriber not found", 404);
+  if (!deleted) throw new AppError('Subscriber not found', 404);
   return deleted;
 };
-
 
 export const guestService = {
   createGuestSubscriberIntoDb,
   getAllGuestsFromDb,
   deleteGuestFromDb
-}
+};
