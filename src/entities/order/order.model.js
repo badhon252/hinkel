@@ -37,7 +37,12 @@ const orderSchema = new mongoose.Schema(
     refundAmount: { type: Number },
     refundReason: { type: String },
     refundedAt: { type: Date },
-    isActive: { type: Boolean, default: true }
+    isActive: { type: Boolean, default: true },
+    appliedCoupon: {
+      code: { type: String },
+      discountAmount: { type: Number },
+      discountType: { type: String, enum: ['percentage', 'flat'] }
+    }
   },
   { timestamps: true }
 );

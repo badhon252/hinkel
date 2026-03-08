@@ -4,6 +4,7 @@ import Order from './order.model.js';
 import User from '../auth/auth.model.js';
 import { cloudinaryUpload } from '../../lib/cloudinaryUpload.js';
 import { orderService } from './order.service.js';
+import { couponService } from '../admin/coupon/coupon.service.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -65,7 +66,7 @@ export const calculatePrice = async (req, res) => {
 // API 2: Confirm Payment & Create Stripe Session
 export const confirmPayment = async (req, res) => {
   try {
-    const { pageCount, deliveryType, userId, orderId } = req.body;
+    const { pageCount, deliveryType, userId, orderId, couponCode } = req.body;
 
     // 1. Re-fetch price from DB to ensure security (prevents frontend manipulation)
     const pricingConfig = await Pricing.findOne({ deliveryType });
@@ -76,7 +77,36 @@ export const confirmPayment = async (req, res) => {
     }
 
     const totalPrice = calculateTotalPrice(pageCount, pricingConfig.pageTiers);
-    const amountInCents = Math.round(totalPrice * 100);
+    let amountInCents = Math.round(totalPrice * 100);
+
+    let couponData = null;
+    if (couponCode) {
+      try {
+        const coupon = await couponService.getCouponByCodeFromDb(couponCode);
+        couponData = {
+          code: coupon.codeName,
+          discountAmount: coupon.discountAmount,
+          discountType: coupon.discountType
+        };
+
+        if (coupon.discountType === 'flat') {
+          amountInCents = Math.max(
+            0,
+            amountInCents - coupon.discountAmount * 100
+          );
+        } else if (coupon.discountType === 'percentage') {
+          const discount = Math.round(
+            (amountInCents * coupon.discountAmount) / 100
+          );
+          amountInCents = Math.max(0, amountInCents - discount);
+        }
+      } catch (couponError) {
+        return res.status(400).json({
+          success: false,
+          message: couponError.message || 'Invalid coupon'
+        });
+      }
+    }
 
     let finalPageCount = pageCount;
     let finalAmount = amountInCents;
@@ -96,27 +126,35 @@ export const confirmPayment = async (req, res) => {
     }
 
     // 2. Create the Stripe Checkout Session
+    const sessionItems = [
+      {
+        price_data: {
+          currency: pricingConfig.currency || 'usd',
+          product_data: {
+            name: `Service: ${deliveryType}`,
+            description: orderId
+              ? `Additional payment for ${pageCount} pages (Total: ${finalPageCount} pages)`
+              : `Payment for ${pageCount} total pages`
+          },
+          unit_amount: amountInCents // Charge only for the new pages
+        },
+        quantity: 1
+      }
+    ];
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: pricingConfig.currency || 'usd',
-            product_data: {
-              name: `Service: ${deliveryType}`,
-              description: orderId
-                ? `Additional payment for ${pageCount} pages (Total: ${finalPageCount} pages)`
-                : `Payment for ${pageCount} total pages`
-            },
-            unit_amount: amountInCents // Charge only for the new pages
-          },
-          quantity: 1
-        }
-      ],
+      line_items: sessionItems,
       mode: 'payment',
       success_url: `${process.env.FRONTEND_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.FRONTEND_URL}/payment-cancelled`,
-      metadata: { userId, deliveryType, pageCount, orderId: orderId || '' }
+      metadata: {
+        userId,
+        deliveryType,
+        pageCount,
+        orderId: orderId || '',
+        couponCode: couponCode || ''
+      }
     });
 
     let resultOrder;
@@ -129,7 +167,8 @@ export const confirmPayment = async (req, res) => {
           pageCount: finalPageCount,
           totalAmount: finalAmount,
           stripeSessionId: session.id,
-          status: 'pending'
+          status: 'pending',
+          appliedCoupon: couponData || existingOrder.appliedCoupon
         },
         { new: true }
       );
@@ -141,7 +180,8 @@ export const confirmPayment = async (req, res) => {
         pageCount,
         totalAmount: amountInCents,
         stripeSessionId: session.id,
-        status: 'pending'
+        status: 'pending',
+        appliedCoupon: couponData
       });
     }
 
@@ -429,6 +469,10 @@ export const checkPaymentStatus = async (req, res) => {
         },
         { new: true }
       );
+
+      if (order?.appliedCoupon?.code) {
+        await couponService.incrementCouponUsedCount(order.appliedCoupon.code);
+      }
 
       if (order) {
         const user = await User.findById(order.userId);
