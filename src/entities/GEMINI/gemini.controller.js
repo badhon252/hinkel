@@ -6,7 +6,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 export const generateLineArtPreview = async (req, res) => {
   try {
     const { image, type, prompt: customPrompt } = req.body;
-    if (!type) return res.status(400).json({ error: 'No type provided' });
+    // if (!type) return res.status(400).json({ error: 'No type provided' });
     if (!image)
       return res.status(400).json({ error: 'No image data provided' });
 

@@ -10,8 +10,8 @@ const createContactMessageIntoDb = async (payload) => {
     throw new AppError('Email already exists', 409);
   }
 
-  if (!firstName || !lastName || !email || !phone || !message) {
-    throw new AppError('All fields are required', 400);
+  if (!firstName || !lastName || !email || !message) {
+    throw new AppError('First name, last name, email, and message are required', 400);
   }
 
   const contact = await Contact.create(payload);

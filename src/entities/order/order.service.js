@@ -72,11 +72,22 @@ export const markOrderAsPaid = async (orderId) => {
  * Update order with book upload and send notification
  */
 export const updateOrderWithBook = async (orderId, bookData) => {
-  const order = await Order.findByIdAndUpdate(orderId, bookData, { new: true });
+  let order;
+  
+  // Try to find by database ID if it looks like one, otherwise try Stripe session ID
+  if (orderId && orderId.length === 24 && /^[0-9a-fA-F]+$/.test(orderId)) {
+    order = await Order.findById(orderId);
+  } else {
+    order = await Order.findOne({ stripeSessionId: orderId });
+  }
 
   if (!order) {
     throw new Error('Order not found');
   }
+
+  // Update the order
+  Object.assign(order, bookData);
+  await order.save();
 
   // Fetch user data for email
   const user = await User.findById(order.userId);
