@@ -16,6 +16,7 @@ export const cloudinaryUpload = async (filePath, public_id, folder) => {
 
     const uploadImage = await cloudinary.uploader.upload(filePath, {
       resource_type: isDocument ? "raw" : "auto", 
+      type: isDocument ? "authenticated" : "upload", // Secure documents
       public_id,
       folder,
     });

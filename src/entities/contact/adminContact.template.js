@@ -11,7 +11,7 @@ export const getContactMessageForAdminTemplate = ({
 
       <p><strong>Name:</strong> ${firstName} ${lastName}</p>
       <p><strong>Email:</strong> ${email}</p>
-      <p><strong>Phone:</strong> ${phone}</p>
+      <p><strong>Phone:</strong> ${phone || 'Not provided'}</p>
 
       <hr />
 

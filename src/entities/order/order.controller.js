@@ -5,8 +5,28 @@ import User from '../auth/auth.model.js';
 import { cloudinaryUpload } from '../../lib/cloudinaryUpload.js';
 import { orderService } from './order.service.js';
 import { couponService } from '../admin/coupon/coupon.service.js';
+import { frontendUrl } from '../../core/config/config.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+/**
+ * Sanitize an order object to remove the direct Cloudinary book URL.
+ * Replaces it with a hasBook flag and a secure proxy URL.
+ */
+const sanitizeOrderForResponse = (order) => {
+  const obj = order.toObject ? order.toObject() : { ...order };
+  const hasBook = !!obj.book;
+
+  // Replace the raw Cloudinary URL with safe alternatives
+  obj.hasBook = hasBook;
+  obj.bookViewUrl = hasBook ? `/order/${obj._id}/view-pdf` : null;
+  // Keep book field for cover image display (Cloudinary can render PDF thumbnails)
+  // but mark it as thumbnail-only
+  obj.bookThumbnail = obj.book || null;
+  delete obj.book;
+
+  return obj;
+};
 
 // Helper function to calculate total price based on page tiers
 const calculateTotalPrice = (pageCount, pageTiers) => {
@@ -146,8 +166,8 @@ export const confirmPayment = async (req, res) => {
       payment_method_types: ['card'],
       line_items: sessionItems,
       mode: 'payment',
-      success_url: `${process.env.FRONTEND_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.FRONTEND_URL}/payment-cancelled`,
+      success_url: `${frontendUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${frontendUrl}/payment-cancelled`,
       metadata: {
         userId,
         deliveryType,
@@ -357,13 +377,16 @@ export const getAllOrdersPopulated = async (req, res) => {
 
     const totalOrders = await Order.countDocuments(query);
 
+    // Sanitize orders to remove direct Cloudinary book URLs
+    const sanitizedOrders = orders.map(sanitizeOrderForResponse);
+
     res.status(200).json({
       success: true,
-      count: orders.length,
+      count: sanitizedOrders.length,
       totalCount: totalOrders,
       currentPage: parseInt(page),
       totalPages: Math.ceil(totalOrders / limitNum),
-      data: orders
+      data: sanitizedOrders
     });
   } catch (error) {
     res.status(500).json({
@@ -380,10 +403,13 @@ export const getOrdersByUserId = async (req, res) => {
     // Find all orders where userId matches the URL parameter
     const userOrders = await Order.find({ userId }).sort({ createdAt: -1 }); // Newest orders at the top
 
+    // Sanitize orders to remove direct Cloudinary book URLs
+    const sanitizedOrders = userOrders.map(sanitizeOrderForResponse);
+
     res.status(200).json({
       success: true,
-      count: userOrders.length,
-      data: userOrders
+      count: sanitizedOrders.length,
+      data: sanitizedOrders
     });
   } catch (error) {
     res.status(500).json({
@@ -667,11 +693,11 @@ export const uploadBook = async (req, res) => {
       });
     }
 
-    // 5️⃣ Send success response
+    // 5️⃣ Send success response with sanitized order
     return res.status(200).json({
       success: true,
       message: 'Book uploaded and order updated successfully',
-      order: updatedOrder
+      order: sanitizeOrderForResponse(updatedOrder)
     });
   } catch (error) {
     console.error('Upload Book Error:', error);

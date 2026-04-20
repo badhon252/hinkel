@@ -13,7 +13,9 @@ import {
   exportOrders,
   archiveOrder
 } from './order.controller.js';
+import { viewBookPdf } from './order.pdfProxy.js';
 import { multerUpload } from '../../core/middlewares/multer.js';
+import { verifyToken } from '../../core/middlewares/authMiddleware.js';
 
 const router = express.Router();
 
@@ -34,6 +36,9 @@ router.post('/refund', refundOrder);
 
 // Get orders by user ID
 router.get('/user/:userId', getOrdersByUserId);
+
+// Secure PDF viewer proxy (auth required)
+router.get('/:orderId/view-pdf', verifyToken, viewBookPdf);
 
 // Admin routes
 router.get('/admin/all-orders', getAllOrdersPopulated);

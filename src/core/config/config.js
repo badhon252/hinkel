@@ -25,6 +25,9 @@ export const emailFrom = process.env.EMAIL_FROM;
 export const adminMail= process.env.ADMIN_EMAIL; 
 export const emailTo = process.env.EMAIL_TO;
 
+// Frontend config
+export const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
 // Cloudinary config
 export const cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME;
 export const cloudinaryApiKey = process.env.CLOUDINARY_API_KEY;
