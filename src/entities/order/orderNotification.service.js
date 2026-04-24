@@ -59,10 +59,33 @@ export const notifyAdminPaymentConfirmed = async (orderData, userData) => {
  * Notify user when book is uploaded by admin
  */
 export const notifyUserBookUploaded = async (orderData, userData) => {
+  const { deliveryType, book, title } = orderData;
+  let subject = '📚 Your Book is Ready!';
+  let attachments = [];
+
+  // Logic based on delivery type:
+  // 1. PDF Only (digital): PDF file delivered via email
+  // 2. Print (print): Email confirms the print order
+  // 3. Both (print&digital): Confirmation email confirms print order AND attach digital/PDF file
+
+  if (deliveryType === 'digital' || deliveryType === 'print&digital') {
+    if (book) {
+      attachments.push({
+        filename: `${title || 'your-book'}.pdf`,
+        path: book // Cloudinary URL
+      });
+    }
+  }
+
+  if (deliveryType === 'print' || deliveryType === 'print&digital') {
+    subject = '📦 Print Order Confirmed - Your Book is Ready!';
+  }
+
   return sendEmail({
     to: userData.email,
-    subject: '📚 Your Book is Ready!',
-    html: getBookUploadedUserTemplate(orderData, userData)
+    subject,
+    html: getBookUploadedUserTemplate(orderData, userData),
+    attachments
   });
 };
 
