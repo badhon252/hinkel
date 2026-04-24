@@ -3,34 +3,44 @@
  */
 export const getOrderCreatedUserTemplate = (orderData, userData) => {
   const amount = (orderData.totalAmount / 100).toFixed(2);
+  const deliveryInfo = orderData.deliveryType === 'digital' 
+    ? 'Your digital coloring book will be delivered to your email as a PDF attachment once you finalize your creation.'
+    : orderData.deliveryType === 'print'
+    ? 'Your physical coloring book will be printed and shipped to your address once you finalize your creation.'
+    : 'You will receive a digital PDF via email and a physical copy will be shipped to your address once you finalize your creation.';
+
   return `
-    <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
-      <h2 style="color: #2c3e50;">🛒 Order Created Successfully</h2>
+    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; color: #333;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h2 style="color: #ff8b36; margin-bottom: 5px;">🛒 Order Received!</h2>
+        <p style="color: #666; font-size: 16px;">We've received your order and it's pending payment.</p>
+      </div>
       
       <p>Hi <strong>${userData.firstName || userData.name || 'Customer'}</strong>,</p>
       
-      <p>Your order has been created and is pending payment confirmation.</p>
+      <p>Thank you for starting your journey with Hinkle Creek! Your order has been successfully created and is waiting for payment confirmation to proceed.</p>
       
-      <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
-        <h3 style="margin-top: 0; color: #495057;">Order Details</h3>
-        <p><strong>Order ID:</strong> ${orderData._id}</p>
-        <p><strong>Delivery Type:</strong> ${orderData.deliveryType}</p>
-        <p><strong>Page Count:</strong> ${orderData.pageCount} pages</p>
-        <p><strong>Total Amount:</strong> $${amount} USD</p>
-        <p><strong>Status:</strong> <span style="color: #ff9800; font-weight: bold;">${orderData.status}</span></p>
+      <div style="background-color: #fffaf3; padding: 20px; border-radius: 10px; margin: 20px 0; border: 1px solid #ffe8d6;">
+        <h3 style="margin-top: 0; color: #ff8b36; border-bottom: 1px solid #ffe8d6; padding-bottom: 10px;">Order Summary</h3>
+        <p style="margin: 10px 0;"><strong>Order ID:</strong> <span style="font-family: monospace;">${orderData._id}</span></p>
+        <p style="margin: 10px 0;"><strong>Delivery Method:</strong> ${orderData.deliveryType.replace('&', ' & ')}</p>
+        <p style="margin: 10px 0;"><strong>Page Count:</strong> ${orderData.pageCount} pages</p>
+        <p style="margin: 10px 0;"><strong>Total Amount:</strong> $${amount} USD</p>
+        <p style="margin: 10px 0;"><strong>Status:</strong> <span style="color: #ff9800; font-weight: bold; text-transform: uppercase;">${orderData.status}</span></p>
       </div>
       
-      <p>Please complete the payment to process your order.</p>
+      <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #ff8b36; margin-bottom: 20px;">
+        <p style="margin: 0; font-size: 14px; color: #555;">
+          <strong>Next Steps:</strong> ${deliveryInfo}
+        </p>
+      </div>
       
-      <p style="margin-top: 30px; color: #666; font-size: 14px;">
-        <strong>Created:</strong> ${new Date(orderData.createdAt).toLocaleString()}
-      </p>
+      <p>Please complete your payment to continue building your custom coloring book.</p>
       
-      <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;" />
-      
-      <p style="color: #999; font-size: 12px;">
-        If you have any questions, please contact our support team.
-      </p>
+      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #999; font-size: 12px; text-align: center;">
+        <p>Created on ${new Date(orderData.createdAt).toLocaleString()}</p>
+        <p>&copy; ${new Date().getFullYear()} Hinkle Creek. All rights reserved.</p>
+      </div>
     </div>
   `;
 };
@@ -76,35 +86,47 @@ export const getOrderCreatedAdminTemplate = (orderData, userData) => {
  */
 export const getPaymentConfirmedUserTemplate = (orderData, userData) => {
   const amount = (orderData.totalAmount / 100).toFixed(2);
+  const deliveryAction = orderData.deliveryType === 'digital'
+    ? 'Once you finish customizing your book and click "Finalize", your PDF will be sent directly to this email address.'
+    : orderData.deliveryType === 'print'
+    ? 'Once you finalize your book, we will start the printing process and notify you when it ships.'
+    : 'Once you finalize your book, your PDF copy will be sent to your email and your physical copy will be prepared for shipping.';
+
   return `
-    <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
-      <h2 style="color: #28a745;">✅ Payment Confirmed!</h2>
+    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; color: #333;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <div style="background-color: #d4edda; width: 60px; height: 60px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 15px;">
+          <span style="color: #28a745; font-size: 30px;">✓</span>
+        </div>
+        <h2 style="color: #28a745; margin: 0;">Payment Confirmed!</h2>
+        <p style="color: #666; font-size: 16px;">Your order is now being processed.</p>
+      </div>
       
       <p>Hi <strong>${userData.firstName || userData.name || 'Customer'}</strong>,</p>
       
-      <p>Thank you for your payment! Your order is now being processed.</p>
+      <p>Success! We've received your payment and your order is officially confirmed. You can now proceed to complete your custom coloring book.</p>
       
-      <div style="background-color: #d4edda; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #28a745;">
-        <h3 style="margin-top: 0; color: #155724;">Order Details</h3>
-        <p><strong>Order ID:</strong> ${orderData._id}</p>
-        <p><strong>Delivery Type:</strong> ${orderData.deliveryType}</p>
-        <p><strong>Page Count:</strong> ${orderData.pageCount} pages</p>
-        <p><strong>Amount Paid:</strong> $${amount} USD</p>
-        <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;">${orderData.status}</span></p>
-        ${orderData.title ? `<p><strong>Title:</strong> ${orderData.title}</p>` : ''}
+      <div style="background-color: #f0fff4; padding: 20px; border-radius: 10px; margin: 20px 0; border: 1px solid #c3e6cb;">
+        <h3 style="margin-top: 0; color: #155724; border-bottom: 1px solid #c3e6cb; padding-bottom: 10px;">Payment Details</h3>
+        <p style="margin: 10px 0;"><strong>Order ID:</strong> <span style="font-family: monospace;">${orderData._id}</span></p>
+        <p style="margin: 10px 0;"><strong>Delivery Type:</strong> ${orderData.deliveryType.replace('&', ' & ')}</p>
+        <p style="margin: 10px 0;"><strong>Amount Paid:</strong> $${amount} USD</p>
+        <p style="margin: 10px 0;"><strong>Status:</strong> <span style="color: #28a745; font-weight: bold; text-transform: uppercase;">PAID</span></p>
+        ${orderData.title ? `<p style="margin: 10px 0;"><strong>Book Title:</strong> ${orderData.title}</p>` : ''}
       </div>
       
-      <p>We will notify you once your book is ready for delivery.</p>
+      <div style="background-color: #e7f3ff; padding: 15px; border-radius: 8px; border-left: 4px solid #007bff; margin-bottom: 20px;">
+        <p style="margin: 0; font-size: 14px; color: #004085;">
+          <strong>What's Next?</strong> ${deliveryAction}
+        </p>
+      </div>
       
-      <p style="margin-top: 30px; color: #666; font-size: 14px;">
-        <strong>Payment Confirmed:</strong> ${new Date().toLocaleString()}
-      </p>
+      <p>Thank you for your business! If you have any questions, our team is here to help.</p>
       
-      <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;" />
-      
-      <p style="color: #999; font-size: 12px;">
-        Thank you for your business! If you have any questions, please contact our support team.
-      </p>
+      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #999; font-size: 12px; text-align: center;">
+        <p>Confirmed on ${new Date().toLocaleString()}</p>
+        <p>&copy; ${new Date().getFullYear()} Hinkle Creek. All rights reserved.</p>
+      </div>
     </div>
   `;
 };
@@ -155,51 +177,71 @@ export const getPaymentConfirmedAdminTemplate = (orderData, userData) => {
  * Email template for user when book is uploaded
  */
 export const getBookUploadedUserTemplate = (orderData, userData) => {
-  const amount = (orderData.totalAmount / 100).toFixed(2);
+  const { deliveryType } = orderData;
+  
+  let headerText = 'Your Book is Ready!';
+  let mainMessage = 'Great news! Your custom coloring book has been finalized and is ready for you.';
+  let subMessage = 'You can access your book anytime using the link below.';
+  let icon = '📚';
+
+  if (deliveryType === 'print') {
+    headerText = 'Print Order Confirmed!';
+    mainMessage = 'Your physical coloring book order has been finalized and sent to our printing facility.';
+    subMessage = 'We will notify you with a tracking number once your book has been shipped.';
+    icon = '📦';
+  } else if (deliveryType === 'print&digital') {
+    headerText = 'Print Order Confirmed & Digital Book Ready!';
+    mainMessage = 'Your physical book is being prepared for printing, and your digital copy is ready right now!';
+    subMessage = 'Your digital PDF is attached to this email and also available for download via the link below. We will notify you when your physical copy ships.';
+    icon = '✨';
+  } else if (deliveryType === 'digital') {
+    headerText = 'Digital Book Delivered!';
+    mainMessage = 'Your custom digital coloring book is ready for download.';
+    subMessage = 'We have attached your PDF coloring book to this email for your convenience. You can also download it using the button below.';
+    icon = '📥';
+  }
+
   return `
-    <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
-      <h2 style="color: #007bff;">📚 Your Book is Ready!</h2>
+    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; color: #333;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <div style="font-size: 40px; margin-bottom: 10px;">${icon}</div>
+        <h2 style="color: #007bff; margin: 0;">${headerText}</h2>
+      </div>
       
       <p>Hi <strong>${userData.firstName || userData.name || 'Customer'}</strong>,</p>
       
-      <p>Great news! Your book has been uploaded and is ready for you.</p>
+      <p>${mainMessage}</p>
       
-      <div style="background-color: #cfe2ff; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #007bff;">
-        <h3 style="margin-top: 0; color: #084298;">Book Details</h3>
-        <p><strong>Title:</strong> ${orderData.title}</p>
-        <p><strong>Order ID:</strong> ${orderData._id}</p>
-        <p><strong>Delivery Type:</strong> ${orderData.deliveryType}</p>
-        <p><strong>Page Count:</strong> ${orderData.pageCount} pages</p>
-        <p><strong>Approval Status:</strong> <span style="color: #007bff; font-weight: bold;">${orderData.approvalStatus || 'Approved'}</span></p>
+      <div style="background-color: #f0f7ff; padding: 20px; border-radius: 10px; margin: 20px 0; border: 1px solid #b8daff;">
+        <h3 style="margin-top: 0; color: #004085; border-bottom: 1px solid #b8daff; padding-bottom: 10px;">Book Details</h3>
+        <p style="margin: 10px 0;"><strong>Title:</strong> ${orderData.title}</p>
+        <p style="margin: 10px 0;"><strong>Order ID:</strong> <span style="font-family: monospace;">${orderData._id}</span></p>
+        <p style="margin: 10px 0;"><strong>Delivery Type:</strong> ${orderData.deliveryType.replace('&', ' & ')}</p>
+        <p style="margin: 10px 0;"><strong>Page Count:</strong> ${orderData.pageCount} pages</p>
       </div>
       
       ${
         orderData.book
           ? `
-      <div style="text-align: center; margin: 20px 0;">
-        <a href="${orderData.book}" style="display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">
-          📥 Download Your Book
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${orderData.book}" style="display: inline-block; padding: 14px 28px; background-color: #ff8b36; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 6px rgba(255, 139, 54, 0.2);">
+          📥 Download Your Coloring Book
         </a>
       </div>
       `
           : ''
       }
       
-      <p>You can now access your book using the link above.</p>
+      <p style="font-size: 15px; line-height: 1.5; color: #555;">${subMessage}</p>
       
-      <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
-        <p style="margin: 0;"><strong>Delivery Status:</strong> ${orderData.deliveryStatus}</p>
+      <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 20px;">
+        <p style="margin: 0; font-size: 14px;"><strong>Delivery Status:</strong> <span style="text-transform: capitalize; color: #007bff; font-weight: bold;">${orderData.deliveryStatus || 'Processing'}</span></p>
       </div>
       
-      <p style="margin-top: 30px; color: #666; font-size: 14px;">
-        <strong>Uploaded:</strong> ${new Date().toLocaleString()}
-      </p>
-      
-      <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;" />
-      
-      <p style="color: #999; font-size: 12px;">
-        Thank you for choosing our service! If you have any questions, please contact our support team.
-      </p>
+      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #999; font-size: 12px; text-align: center;">
+        <p>Delivered on ${new Date().toLocaleString()}</p>
+        <p>&copy; ${new Date().getFullYear()} Hinkle Creek. All rights reserved.</p>
+      </div>
     </div>
   `;
 };
