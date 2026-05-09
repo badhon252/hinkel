@@ -15,7 +15,10 @@ import {
 } from './order.controller.js';
 import { viewBookPdf } from './order.pdfProxy.js';
 import { multerUpload } from '../../core/middlewares/multer.js';
-import { verifyToken } from '../../core/middlewares/authMiddleware.js';
+import {
+  adminMiddleware,
+  verifyToken
+} from '../../core/middlewares/authMiddleware.js';
 
 const router = express.Router();
 
@@ -23,29 +26,34 @@ const router = express.Router();
 router.post('/calculate-price', calculatePrice);
 
 // Route for updating delivery status (admin)
-router.patch('/update-delivery-status', updateDeliveryStatus);
+router.patch(
+  '/update-delivery-status',
+  verifyToken,
+  adminMiddleware,
+  updateDeliveryStatus
+);
 
 // Route for confirming payment and getting the Stripe URL
-router.post('/confirm-payment', confirmPayment);
+router.post('/confirm-payment', verifyToken, confirmPayment);
 
 // Route for checking payment status
-router.post('/check-payment-status', checkPaymentStatus);
+router.post('/check-payment-status', verifyToken, checkPaymentStatus);
 
 // Route for refunding an order
-router.post('/refund', refundOrder);
+router.post('/refund', verifyToken, adminMiddleware, refundOrder);
 
 // Get orders by user ID
-router.get('/user/:userId', getOrdersByUserId);
+router.get('/user/:userId', verifyToken, getOrdersByUserId);
 
 // Secure PDF viewer proxy (auth required)
 router.get('/:orderId/view-pdf', verifyToken, viewBookPdf);
 
 // Admin routes
-router.get('/admin/all-orders', getAllOrdersPopulated);
-router.get('/admin/export-orders', exportOrders);
-router.put('/upload-book', multerUpload([{ name: 'image' }]), uploadBook);
-router.get('/admin/dashboard-stats', getOrderStats);
-router.delete('/admin/:orderId', deleteOrder);
-router.patch('/admin/archive/:orderId', archiveOrder);
+router.get('/admin/all-orders', verifyToken, adminMiddleware, getAllOrdersPopulated);
+router.get('/admin/export-orders', verifyToken, adminMiddleware, exportOrders);
+router.put('/upload-book', verifyToken, multerUpload([{ name: 'image' }]), uploadBook);
+router.get('/admin/dashboard-stats', verifyToken, adminMiddleware, getOrderStats);
+router.delete('/admin/:orderId', verifyToken, adminMiddleware, deleteOrder);
+router.patch('/admin/archive/:orderId', verifyToken, adminMiddleware, archiveOrder);
 
 export default router;

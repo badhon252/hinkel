@@ -9,6 +9,20 @@ import { frontendUrl } from '../../core/config/config.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+const isAdminUser = (user) => user?.role === 'ADMIN';
+
+const findOrderByIdentifier = async (orderIdentifier) => {
+  if (
+    orderIdentifier &&
+    orderIdentifier.length === 24 &&
+    /^[0-9a-fA-F]+$/.test(orderIdentifier)
+  ) {
+    return Order.findById(orderIdentifier);
+  }
+
+  return Order.findOne({ stripeSessionId: orderIdentifier });
+};
+
 /**
  * Sanitize an order object to remove the direct Cloudinary book URL.
  * Replaces it with a hasBook flag and a secure proxy URL.
@@ -86,7 +100,15 @@ export const calculatePrice = async (req, res) => {
 // API 2: Confirm Payment & Create Stripe Session
 export const confirmPayment = async (req, res) => {
   try {
-    const { pageCount, deliveryType, userId, orderId, couponCode } = req.body;
+    const { pageCount, deliveryType, orderId, couponCode } = req.body;
+    const authenticatedUserId = req.user?._id?.toString();
+
+    if (!authenticatedUserId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
 
     // 1. Re-fetch price from DB to ensure security (prevents frontend manipulation)
     const pricingConfig = await Pricing.findOne({ deliveryType });
@@ -134,7 +156,10 @@ export const confirmPayment = async (req, res) => {
 
     // Check if orderId is provided - if so, we're adding to an existing order
     if (orderId) {
-      existingOrder = await Order.findOne({ _id: orderId, userId });
+      existingOrder = await Order.findOne({
+        _id: orderId,
+        userId: authenticatedUserId
+      });
       if (!existingOrder) {
         return res
           .status(404)
@@ -169,7 +194,7 @@ export const confirmPayment = async (req, res) => {
       success_url: `${frontendUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontendUrl}/payment-cancelled`,
       metadata: {
-        userId,
+        userId: authenticatedUserId,
         deliveryType,
         pageCount,
         orderId: orderId || '',
@@ -195,7 +220,7 @@ export const confirmPayment = async (req, res) => {
     } else {
       // 3. Save the initial order in the database with email notifications
       resultOrder = await orderService.createOrderInDb({
-        userId,
+        userId: authenticatedUserId,
         deliveryType,
         pageCount,
         totalAmount: amountInCents,
@@ -399,6 +424,21 @@ export const getAllOrdersPopulated = async (req, res) => {
 export const getOrdersByUserId = async (req, res) => {
   try {
     const { userId } = req.params;
+    const requesterId = req.user?._id?.toString();
+
+    if (!requesterId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
+
+    if (!isAdminUser(req.user) && requesterId !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to view these orders'
+      });
+    }
 
     // Find all orders where userId matches the URL parameter
     const userOrders = await Order.find({ userId }).sort({ createdAt: -1 }); // Newest orders at the top
@@ -473,9 +513,34 @@ import fs from 'fs';
 export const checkPaymentStatus = async (req, res) => {
   try {
     const { sessionId, orderId } = req.body;
+    const order = await Order.findById(orderId);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    const isOwner = order.userId?.toString() === req.user?._id?.toString();
+    if (!isOwner && !isAdminUser(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to access this order'
+      });
+    }
+
+    if (sessionId && order.stripeSessionId && order.stripeSessionId !== sessionId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment session does not match this order'
+      });
+    }
 
     // Get the session from Stripe
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const session = await stripe.checkout.sessions.retrieve(
+      sessionId || order.stripeSessionId
+    );
 
     if (!session) {
       return res.status(404).json({
@@ -663,6 +728,25 @@ export const uploadBook = async (req, res) => {
       });
     }
 
+    const existingOrder = await findOrderByIdentifier(orderId);
+
+    if (!existingOrder) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    const isOwner =
+      existingOrder.userId?.toString() === req.user?._id?.toString();
+
+    if (!isOwner && !isAdminUser(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to upload a book for this order'
+      });
+    }
+
     // 2️⃣ Upload image to Cloudinary
     const sanitizedTitle = `${title.replace(/\s+/g, '-')}-${Date.now()}`;
     const uploaded = await cloudinaryUpload(file.path, sanitizedTitle, 'items');
@@ -685,13 +769,6 @@ export const uploadBook = async (req, res) => {
       title,
       approvalStatus
     });
-
-    if (!updatedOrder) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found'
-      });
-    }
 
     // 5️⃣ Send success response with sanitized order
     return res.status(200).json({
