@@ -3,9 +3,19 @@ import 'dotenv/config';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
+const normalizePrompt = (prompt) =>
+  typeof prompt === 'string'
+    ? prompt
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join('\n')
+    : '';
+
 export const generateLineArtPreview = async (req, res) => {
   try {
     const { image, type, prompt: customPrompt } = req.body;
+    const normalizedCustomPrompt = normalizePrompt(customPrompt);
     // if (!type) return res.status(400).json({ error: 'No type provided' });
     if (!image)
       return res.status(400).json({ error: 'No image data provided' });
@@ -40,7 +50,9 @@ Strict Requirements:
     const prompt = [
       baseQualityPrompt,
       promptMap[selectedType],
-      customPrompt ? `Additional user instruction: ${customPrompt}` : ''
+      normalizedCustomPrompt
+        ? `Additional user instruction: ${normalizedCustomPrompt}`
+        : ''
     ]
       .filter(Boolean)
       .join('\n\n');
