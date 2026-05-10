@@ -8,7 +8,8 @@ import {
   changePassword,
   logoutUser,
   registerUser,
-  verifyEmail
+  verifyEmail,
+  resendVerificationEmail
 } from './auth.controller.js';
 import { verifyToken } from '../../core/middlewares/authMiddleware.js';
 
@@ -18,6 +19,7 @@ const router = express.Router();
 
 router.post('/register', registerUser);
 router.post('/verify-email', verifyEmail);
+router.post('/resend-verification-email', resendVerificationEmail);
 router.post('/login', loginUser);
 router.post('/refresh-access-token', refreshAccessToken);
 router.post('/forget-password', forgetPassword);

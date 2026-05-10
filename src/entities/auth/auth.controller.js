@@ -8,7 +8,8 @@ import {
   resetPasswordService,
   changePasswordService,
   registerUserService,
-  verifyEmailService
+  verifyEmailService,
+  resendVerificationEmailService
 } from './auth.service.js';
 
 
@@ -39,10 +40,16 @@ export const registerUser = async (req, res, next) => {
   const { name, email, password } = req.body;
   try {
     const data = await registerUserService({ name, email, password });
-    generateResponse(res, 201, true, 'Registered successfully. Please verify your email.', data);
+    const message = data.alreadyPendingVerification
+      ? 'This email is already pending verification. We sent a fresh verification code.'
+      : 'Registered successfully. Please verify your email.';
+
+    generateResponse(res, 201, true, message, data);
   } catch (error) {
     if (error.message === 'User already registered.') {
       generateResponse(res, 400, false, 'User already registered', null);
+    } else if (error.message === 'Please wait before requesting a new verification code') {
+      generateResponse(res, 429, false, 'Please wait before requesting a new verification code', null);
     } else {
       next(error);
     }
@@ -54,8 +61,8 @@ export const registerUser = async (req, res, next) => {
 export const verifyEmail = async (req, res, next) => {
   const { email, otp } = req.body;
   try {
-    await verifyEmailService({ email, otp });
-    generateResponse(res, 200, true, 'Email verified successfully', null);
+    const data = await verifyEmailService({ email, otp });
+    generateResponse(res, 200, true, 'Email verified successfully', data);
   } catch (error) {
     if (error.message === 'Email and otp are required') {
       generateResponse(res, 400, false, 'Email and otp are required', null);
@@ -65,6 +72,29 @@ export const verifyEmail = async (req, res, next) => {
       generateResponse(res, 404, false, 'Otp not found', null);
     } else if (error.message === 'Invalid or expired otp') {
       generateResponse(res, 403, false, 'Invalid or expired otp', null);
+    } else if (error.message === 'Email already verified') {
+      generateResponse(res, 409, false, 'Email already verified', null);
+    } else {
+      next(error);
+    }
+  }
+};
+
+export const resendVerificationEmail = async (req, res, next) => {
+  const { email } = req.body;
+
+  try {
+    const data = await resendVerificationEmailService(email);
+    generateResponse(res, 200, true, 'Verification code sent to your email', data);
+  } catch (error) {
+    if (error.message === 'Email is required') {
+      generateResponse(res, 400, false, 'Email is required', null);
+    } else if (error.message === 'Invalid email') {
+      generateResponse(res, 404, false, 'Invalid email', null);
+    } else if (error.message === 'Email already verified') {
+      generateResponse(res, 409, false, 'Email already verified', null);
+    } else if (error.message === 'Please wait before requesting a new verification code') {
+      generateResponse(res, 429, false, 'Please wait before requesting a new verification code', null);
     } else {
       next(error);
     }
@@ -78,7 +108,13 @@ export const loginUser = async (req, res, next) => {
   const { email, password } = req.body;
 
   try {
-    const data = await loginUserService({ email, password })
+    const data = await loginUserService({ email, password });
+
+    if (data.verificationRequired) {
+      generateResponse(res, 403, false, 'Please verify your email before logging in', data);
+      return;
+    }
+
     generateResponse(res, 200, true, 'Login successful', data);
   }
 
@@ -93,6 +129,10 @@ export const loginUser = async (req, res, next) => {
 
     else if (error.message === 'Invalid password') {
       generateResponse(res, 400, false, 'Invalid password', null);
+    }
+
+    else if (error.message === 'Please wait before requesting a new verification code') {
+      generateResponse(res, 429, false, 'Please wait before requesting a new verification code', null);
     }
 
     else {
@@ -200,6 +240,10 @@ export const resetPassword = async (req, res, next) => {
 
     else if (error.message === 'otp not cleared') {
       generateResponse(res, 403, false, 'otp not cleared', null);
+    }
+
+    else if (error.message === 'Reset session expired') {
+      generateResponse(res, 403, false, 'Reset session expired', null);
     }
 
     else {

@@ -18,7 +18,7 @@ const UserSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     lastName:{type:String},
-    email: { type: String, required: true, unique: true },
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true },
     username: { type: String },
     dob: { type: Date, default: null },
@@ -49,6 +49,17 @@ const UserSchema = new mongoose.Schema(
     },
 
     otpExpires: {
+      type: Date,
+      default: null
+    },
+
+    otpPurpose: {
+      type: String,
+      enum: ['email_verification', 'password_reset', null],
+      default: null
+    },
+
+    otpLastSentAt: {
       type: Date,
       default: null
     },

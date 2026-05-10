@@ -1,113 +1,239 @@
 import User from './auth.model.js';
 import jwt from 'jsonwebtoken';
-import { refreshTokenSecrete, emailExpires } from '../../core/config/config.js';
+import {
+  refreshTokenSecrete,
+  emailExpires,
+  emailFrom
+} from '../../core/config/config.js';
 import sendEmail from '../../lib/sendEmail.js';
 import verificationCodeTemplate from '../../lib/emailTemplates.js';
 
-
-// export const registerUserService = async ({
-//   name,
-//   email,
-//   password
-// }) => {
-//   const existingUser = await User.findOne({ email });
-//   if (existingUser) throw new Error('User already registered.');
-
-//   const newUser = new User({
-//     name,
-//     email,
-//     password,
-//   });
-
-//   const user = await newUser.save();
-
-//   const { _id, role, profileImage } = user;
-//   return { _id, name, email, role,  profileImage };
-// };
-
-
-// ✅ Modified registerUserService — send OTP after register
-export const registerUserService = async ({ name, email, password }) => {
-  const existingUser = await User.findOne({ email });
-  if (existingUser) throw new Error('User already registered.');
-
-  const otp        = Math.floor(100000 + Math.random() * 900000);
-  const otpExpires = new Date(Date.now() + emailExpires);
-
-  const newUser = new User({
-    name,
-    email,
-    password,
-    otp,
-    otpExpires,
-    otpVerified: false,
-    isVerified: false,
-  });
-
-  const user = await newUser.save();
-
-  // ✅ Send OTP to email
-  await sendEmail({
-    to: email,
-    subject: 'Verify your email',
-    html: verificationCodeTemplate(otp),
-  });
-
-  const payload     = { _id: user._id, role: user.role };
-  const accessToken = user.generateAccessToken(payload);
-
-  return { accessToken };
+const OTP_PURPOSE = {
+  EMAIL_VERIFICATION: 'email_verification',
+  PASSWORD_RESET: 'password_reset'
 };
 
+const RESEND_COOLDOWN_MS = 60 * 1000;
 
-// ✅ New — verifyEmailService (reuses existing otp fields on the model)
-export const verifyEmailService = async ({ email, otp }) => {
-  if (!email || !otp) throw new Error('Email and otp are required');
+const getOtpExpiryMinutes = () => Math.max(1, Math.ceil(emailExpires / (60 * 1000)));
 
-  const user = await User.findOne({ email });
-  if (!user)                          throw new Error('Invalid email');
-  if (!user.otp || !user.otpExpires)  throw new Error('Otp not found');
+const normalizeEmail = (email = '') => email.trim().toLowerCase();
+
+const generateOtp = () => `${Math.floor(100000 + Math.random() * 900000)}`;
+
+const maskEmail = (email) => {
+  const [localPart = '', domain = ''] = email.split('@');
+  if (!localPart || !domain) return email;
+
+  const visible = localPart.length <= 2
+    ? `${localPart[0] || ''}*`
+    : `${localPart.slice(0, 2)}${'*'.repeat(Math.max(1, localPart.length - 2))}`;
+
+  return `${visible}@${domain}`;
+};
+
+const buildVerificationMeta = (email) => ({
+  email,
+  maskedEmail: maskEmail(email),
+  expiresInMinutes: getOtpExpiryMinutes(),
+  resendCooldownSeconds: Math.floor(RESEND_COOLDOWN_MS / 1000)
+});
+
+const assignOtp = (user, purpose) => {
+  user.otp = generateOtp();
+  user.otpExpires = new Date(Date.now() + emailExpires);
+  user.otpPurpose = purpose;
+  user.otpLastSentAt = new Date();
+
+  if (purpose === OTP_PURPOSE.PASSWORD_RESET) {
+    user.otpVerified = false;
+    user.resetExpires = null;
+  }
+};
+
+const isWithinResendCooldown = (user) =>
+  Boolean(
+    user.otpLastSentAt &&
+      Date.now() - new Date(user.otpLastSentAt).getTime() < RESEND_COOLDOWN_MS
+  );
+
+const ensureResendCooldown = (user) => {
+  if (isWithinResendCooldown(user)) {
+    throw new Error('Please wait before requesting a new verification code');
+  }
+};
+
+const sendOtpEmail = async ({ email, name, otp, purpose }) => {
+  await sendEmail({
+    to: email,
+    subject:
+      purpose === OTP_PURPOSE.EMAIL_VERIFICATION
+        ? 'Verify your Hinkle account'
+        : 'Your Hinkle password reset code',
+    html: verificationCodeTemplate({
+      code: otp,
+      recipientName: name,
+      brandName: 'Hinkle',
+      supportEmail: emailFrom,
+      expiresInMinutes: getOtpExpiryMinutes(),
+      purpose
+    })
+  });
+};
+
+const ensureOtpMatches = (user, otp, expectedPurpose) => {
+  if (!user.otp || !user.otpExpires || user.otpPurpose !== expectedPurpose) {
+    throw new Error('Otp not found');
+  }
 
   if (
-    parseInt(user.otp, 10) !== parseInt(otp, 10) ||
+    String(user.otp) !== String(otp).trim() ||
     Date.now() > user.otpExpires.getTime()
   ) {
     throw new Error('Invalid or expired otp');
   }
+};
 
-  user.otp        = null;
+export const registerUserService = async ({ name, email, password }) => {
+  const normalizedEmail = normalizeEmail(email);
+  const existingUser = await User.findOne({ email: normalizedEmail });
+
+  if (existingUser?.isVerified) {
+    throw new Error('User already registered.');
+  }
+
+  if (existingUser && !existingUser.isVerified) {
+    if (!isWithinResendCooldown(existingUser)) {
+      assignOtp(existingUser, OTP_PURPOSE.EMAIL_VERIFICATION);
+      await existingUser.save({ validateBeforeSave: false });
+      await sendOtpEmail({
+        email: existingUser.email,
+        name: existingUser.name,
+        otp: existingUser.otp,
+        purpose: OTP_PURPOSE.EMAIL_VERIFICATION
+      });
+    }
+
+    return {
+      alreadyPendingVerification: true,
+      ...buildVerificationMeta(existingUser.email)
+    };
+  }
+
+  const newUser = new User({
+    name,
+    email: normalizedEmail,
+    password,
+    isVerified: false
+  });
+
+  assignOtp(newUser, OTP_PURPOSE.EMAIL_VERIFICATION);
+
+  const user = await newUser.save();
+
+  await sendOtpEmail({
+    email: user.email,
+    name: user.name,
+    otp: user.otp,
+    purpose: OTP_PURPOSE.EMAIL_VERIFICATION
+  });
+
+  return buildVerificationMeta(user.email);
+};
+
+export const verifyEmailService = async ({ email, otp }) => {
+  if (!email || !otp) throw new Error('Email and otp are required');
+
+  const normalizedEmail = normalizeEmail(email);
+  const user = await User.findOne({ email: normalizedEmail });
+
+  if (!user) throw new Error('Invalid email');
+  if (user.isVerified) throw new Error('Email already verified');
+
+  ensureOtpMatches(user, otp, OTP_PURPOSE.EMAIL_VERIFICATION);
+
+  user.otp = null;
   user.otpExpires = null;
+  user.otpPurpose = null;
+  user.otpLastSentAt = null;
   user.otpVerified = true;
-  user.isVerified  = true;   // ✅ Mark email as verified
+  user.isVerified = true;
+  user.resetExpires = null;
 
   await user.save({ validateBeforeSave: false });
 
-  return;
+  return {
+    email: user.email,
+    isVerified: true
+  };
+};
+
+export const resendVerificationEmailService = async (email) => {
+  if (!email) throw new Error('Email is required');
+
+  const normalizedEmail = normalizeEmail(email);
+  const user = await User.findOne({ email: normalizedEmail });
+
+  if (!user) throw new Error('Invalid email');
+  if (user.isVerified) throw new Error('Email already verified');
+
+  ensureResendCooldown(user);
+  assignOtp(user, OTP_PURPOSE.EMAIL_VERIFICATION);
+  await user.save({ validateBeforeSave: false });
+
+  await sendOtpEmail({
+    email: user.email,
+    name: user.name,
+    otp: user.otp,
+    purpose: OTP_PURPOSE.EMAIL_VERIFICATION
+  });
+
+  return buildVerificationMeta(user.email);
 };
 
 export const loginUserService = async ({ email, password }) => {
   if (!email || !password) throw new Error('Email and password are required');
 
-  const user = await User.findOne({ email }).select("_id firstName lastName email role profileImage");
+  const normalizedEmail = normalizeEmail(email);
+  const user = await User.findOne({ email: normalizedEmail }).select(
+    '_id name lastName email role profileImage refreshToken isVerified otpLastSentAt'
+  );
 
   if (!user) throw new Error('User not found');
 
   const isMatch = await user.comparePassword(user._id, password);
   if (!isMatch) throw new Error('Invalid password');
 
-  const payload = { _id: user._id, role: user.role };
+  if (!user.isVerified) {
+    if (!isWithinResendCooldown(user)) {
+      assignOtp(user, OTP_PURPOSE.EMAIL_VERIFICATION);
+      await user.save({ validateBeforeSave: false });
 
-  const data = {
-    user,
-    accessToken: user.generateAccessToken(payload)
-  };
+      await sendOtpEmail({
+        email: user.email,
+        name: user.name,
+        otp: user.otp,
+        purpose: OTP_PURPOSE.EMAIL_VERIFICATION
+      });
+    }
+
+    return {
+      verificationRequired: true,
+      ...buildVerificationMeta(user.email)
+    };
+  }
+
+  const payload = { _id: user._id, role: user.role };
 
   user.refreshToken = user.generateRefreshToken(payload);
   await user.save({ validateBeforeSave: false });
 
-  return data
+  return {
+    user,
+    accessToken: user.generateAccessToken(payload),
+    refreshToken: user.refreshToken
+  };
 };
-
 
 export const refreshAccessTokenService = async (refreshToken) => {
   if (!refreshToken) throw new Error('No refresh token provided');
@@ -116,82 +242,79 @@ export const refreshAccessTokenService = async (refreshToken) => {
 
   if (!user) throw new Error('Invalid refresh token');
 
-  const decoded = jwt.verify(refreshToken, refreshTokenSecrete)
+  const decoded = jwt.verify(refreshToken, refreshTokenSecrete);
 
-  if (!decoded || decoded._id !== user._id.toString()) throw new Error('Invalid refresh token')
+  if (!decoded || decoded._id !== user._id.toString()) {
+    throw new Error('Invalid refresh token');
+  }
 
-  const payload = { _id: user._id , role: user.role }
+  const payload = { _id: user._id, role: user.role };
 
   const accessToken = user.generateAccessToken(payload);
   const newRefreshToken = user.generateRefreshToken(payload);
 
   user.refreshToken = newRefreshToken;
-  await user.save({ validateBeforeSave: false })
+  await user.save({ validateBeforeSave: false });
 
   return {
     accessToken,
     refreshToken: newRefreshToken
-  }
+  };
 };
-
 
 export const forgetPasswordService = async (email) => {
   if (!email) throw new Error('Email is required');
 
-  const user = await User.findOne({ email });
+  const normalizedEmail = normalizeEmail(email);
+  const user = await User.findOne({ email: normalizedEmail });
+
   if (!user) throw new Error('Invalid email');
 
-  const otp = Math.floor(100000 + Math.random() * 900000);
-  const otpExpires = new Date(Date.now() + emailExpires);
-
-  user.otp = otp;
-  user.otpExpires = otpExpires;
-  user.otpVerified = false;
-  user.resetExpires = null;
+  assignOtp(user, OTP_PURPOSE.PASSWORD_RESET);
 
   await user.save({ validateBeforeSave: false });
 
-  await sendEmail({
-    to: email,
-    subject: 'Password Reset OTP',
-    html: verificationCodeTemplate(otp),
+  await sendOtpEmail({
+    email: user.email,
+    name: user.name,
+    otp: user.otp,
+    purpose: OTP_PURPOSE.PASSWORD_RESET
   });
 
-  return;
+  return {
+    email: user.email,
+    expiresInMinutes: getOtpExpiryMinutes()
+  };
 };
-
 
 export const verifyCodeService = async ({ email, otp }) => {
   if (!email || !otp) throw new Error('Email and otp are required');
 
-  const user = await User.findOne({ email });
+  const normalizedEmail = normalizeEmail(email);
+  const user = await User.findOne({ email: normalizedEmail });
+
   if (!user) throw new Error('Invalid email');
 
-  if (!user.otp || !user.otpExpires) throw new Error('Otp not found');
-
-  if (
-    parseInt(user.otp, 10) !== parseInt(otp, 10) ||
-    Date.now() > user.otpExpires.getTime()
-  ) {
-    throw new Error('Invalid or expired otp');
-  }
+  ensureOtpMatches(user, otp, OTP_PURPOSE.PASSWORD_RESET);
 
   user.otp = null;
   user.otpExpires = null;
+  user.otpPurpose = null;
+  user.otpLastSentAt = null;
   user.otpVerified = true;
-  user.resetExpires = new Date(Date.now() + 15 * 60 * 1000); 
+  user.resetExpires = new Date(Date.now() + 15 * 60 * 1000);
 
   await user.save({ validateBeforeSave: false });
-
-  return;
 };
 
-
 export const resetPasswordService = async ({ email, newPassword }) => {
-  if (!email || !newPassword)
+  if (!email || !newPassword) {
     throw new Error('Email and new password are required');
+  }
 
-  const user = await User.findOne({ email });
+  const normalizedEmail = normalizeEmail(email);
+  const user = await User.findOne({ email: normalizedEmail });
+
   if (!user) throw new Error('Invalid email');
 
   if (!user.otpVerified || !user.resetExpires) {
@@ -205,15 +328,18 @@ export const resetPasswordService = async ({ email, newPassword }) => {
   user.password = newPassword;
   user.otpVerified = false;
   user.resetExpires = null;
+  user.otp = null;
+  user.otpExpires = null;
+  user.otpPurpose = null;
+  user.otpLastSentAt = null;
 
   await user.save();
-
-  return;
 };
 
-
 export const changePasswordService = async ({ userId, oldPassword, newPassword }) => {
-  if (!userId || !oldPassword || !newPassword) throw new Error('User id, old password and new password are required');
+  if (!userId || !oldPassword || !newPassword) {
+    throw new Error('User id, old password and new password are required');
+  }
 
   const user = await User.findById(userId);
   if (!user) throw new Error('User not found');
@@ -223,6 +349,4 @@ export const changePasswordService = async ({ userId, oldPassword, newPassword }
 
   user.password = newPassword;
   await user.save();
-
-  return;
 };
